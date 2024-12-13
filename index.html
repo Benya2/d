@@ -1,46 +1,92 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pixel Art Canvas</title>
+    <title>Game</title>
     <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f0f0f0;
-        }
-        #canvas {
-            display: grid;
-            grid-template-columns: repeat(50, 20px); /* 50 столбцов по 20px */
-            grid-template-rows: repeat(50, 20px); /* 50 строк по 20px */
-        }
-        .pixel {
-            width: 20px;
-            height: 20px;
-            background-color: white;
-            border: 1px solid #ddd;
-        }
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; background-color: #f0f0f0; }
     </style>
 </head>
 <body>
-    <div id="canvas"></div>
+    <canvas id="gameCanvas"></canvas>
     <script>
-        const canvas = document.getElementById('canvas');
-        const numPixels = 50; // количество пикселей по ширине и высоте
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
-        // Создаем пиксели и добавляем их в контейнер
-        for (let i = 0; i < numPixels * numPixels; i++) {
-            const pixel = document.createElement('div');
-            pixel.className = 'pixel';
-            pixel.addEventListener('click', () => {
-                pixel.style.backgroundColor = pixel.style.backgroundColor === 'black' ? 'white' : 'black';
-            });
-            canvas.appendChild(pixel);
+        const ws = new WebSocket('ws://localhost:3000');
+        const tanks = [];
+        const bullets = [];
+
+        ws.onopen = () => {
+            console.log('WebSocket соединение установлено');
+        };
+
+        ws.onmessage = (event) => {
+            const gameData = JSON.parse(event.data);
+            updateGame(gameData);
+        };
+
+        function updateGame(gameData) {
+            tanks.length = 0;
+            bullets.length = 0;
+            gameData.tanks.forEach(tank => tanks.push(tank));
+            gameData.bullets.forEach(bullet => bullets.push(bullet));
+            drawGame();
         }
+
+        function drawGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            tanks.forEach(tank => {
+                ctx.beginPath();
+                ctx.arc(tank.x, tank.y, 20, 0, Math.PI * 2);
+                ctx.fillStyle = tank.isBot ? 'red' : 'green';
+                ctx.fill();
+            });
+
+            bullets.forEach(bullet => {
+                ctx.beginPath();
+                ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
+                ctx.fillStyle = 'black';
+                ctx.fill();
+                bullet.x += Math.cos(bullet.angle * Math.PI / 180) * bullet.speed;
+                bullet.y += Math.sin(bullet.angle * Math.PI / 180) * bullet.speed;
+            });
+        }
+
+        // Пример простого управления игроком
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'ArrowUp') {
+                // Перемещение игрока вверх
+                tanks[0].y -= 5;
+            } else if (event.key === 'ArrowDown') {
+                // Перемещение игрока вниз
+                tanks[0].y += 5;
+            } else if (event.key === 'ArrowLeft') {
+                // Поворот влево
+                tanks[0].angle -= 5;
+            } else if (event.key === 'ArrowRight') {
+                // Поворот вправо
+                tanks[0].angle += 5;
+            }
+
+            // Отправка данных на сервер
+            ws.send(JSON.stringify({
+                type: 'move',
+                id: tanks[0].id,
+                x: tanks[0].x,
+                y: tanks[0].y,
+                angle: tanks[0].angle
+            }));
+        });
+
+        setInterval(() => {
+            drawGame();
+        }, 50);
     </script>
 </body>
 </html>
