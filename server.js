@@ -1,69 +1,29 @@
-const express = require('express');
-const http = require('http');
 const WebSocket = require('ws');
-const path = require('path');
+const wss = new WebSocket.Server({ port: 8080 });
 
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
-
-const tanks = [];
-const bullets = [];
-
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
-
-function createBullet(tank) {
-  const bullet = {
-    x: tank.x,
-    y: tank.y,
-    angle: tank.angle,
-    speed: 5,
-  };
-  bullets.push(bullet);
-}
-
-function moveBullets() {
-  for (const bullet of bullets) {
-    bullet.x += Math.cos(bullet.angle * Math.PI / 180) * bullet.speed;
-    bullet.y += Math.sin(bullet.angle * Math.PI / 180) * bullet.speed;
-  }
-}
-
-function sendGameData() {
-  const gameData = {
-    tanks,
-    bullets,
-  };
-  wss.clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(gameData));
-    }
-  });
-}
+let tanks = [];  // Массив для хранения данных о танках
 
 wss.on('connection', ws => {
   console.log('Клиент подключился');
   
-  // Генерация уникальной буквы для нового игрока
+  // Создаем новый танк для каждого игрока
   const playerId = `player-${Date.now()}`;
-  const letter = String.fromCharCode(65 + (tanks.length % 26)); // Генерируем букву (A, B, C, ...)
+  const letter = String.fromCharCode(65 + (tanks.length % 26)); // Генерация буквы
   const playerTank = {
     id: playerId,
     x: 400,
     y: 300,
     angle: 0,
-    isBot: false,
-    letter: letter, // Присваиваем букву игроку
+    letter: letter, // Буква игрока
   };
   tanks.push(playerTank);
-  console.log(`Создан новый танк: ${playerId} с буквой ${letter}`);
 
+  // Отправляем данные о всех танках каждому подключенному клиенту
+  ws.send(JSON.stringify({ tanks }));
+
+  // Обработка сообщений от клиента
   ws.on('message', message => {
     const data = JSON.parse(message);
-    console.log('Получены данные от клиента:', data);
-
     if (data.type === 'move') {
       const playerTank = tanks.find(tank => tank.id === data.id);
       if (playerTank) {
@@ -72,20 +32,16 @@ wss.on('connection', ws => {
         playerTank.angle = data.angle;
       }
     }
-
-    if (data.type === 'shoot') {
-      const playerTank = tanks.find(tank => tank.id === data.id);
-      if (playerTank) {
-        createBullet(playerTank);
-        console.log(`Пуля от игрока ${data.id}`);
-      }
-    }
   });
 
+  // Отправка обновленных данных о танках всем клиентам
   const interval = setInterval(() => {
-    moveBullets();
-    sendGameData();
-  }, 50);
+    wss.clients.forEach(client => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ tanks }));
+      }
+    });
+  }, 50);  // Отправляем обновления каждый 50 миллисекунд
 
   ws.on('close', () => {
     clearInterval(interval);
@@ -95,8 +51,4 @@ wss.on('connection', ws => {
       tanks.splice(index, 1);
     }
   });
-});
-
-server.listen(3000, () => {
-  console.log('Сервер работает на http://localhost:3000');
 });
