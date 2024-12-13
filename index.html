@@ -20,6 +20,7 @@
         const ws = new WebSocket('ws://localhost:3000');
         const tanks = [];
         const bullets = [];
+        let playerTank = null;
 
         ws.onopen = () => {
             console.log('WebSocket соединение установлено');
@@ -27,6 +28,7 @@
 
         ws.onmessage = (event) => {
             const gameData = JSON.parse(event.data);
+            console.log('Получены данные игры:', gameData);
             updateGame(gameData);
         };
 
@@ -42,10 +44,13 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
             tanks.forEach(tank => {
-                ctx.beginPath();
-                ctx.arc(tank.x, tank.y, 20, 0, Math.PI * 2);
-                ctx.fillStyle = tank.isBot ? 'red' : 'green';
-                ctx.fill();
+                ctx.save();
+                ctx.translate(tank.x, tank.y);
+                ctx.rotate(tank.angle * Math.PI / 180);
+                ctx.font = "30px Arial";
+                ctx.fillStyle = 'green';
+                ctx.fillText(tank.letter, -15, 10); // Отображаем букву вместо танка
+                ctx.restore();
             });
 
             bullets.forEach(bullet => {
@@ -53,40 +58,65 @@
                 ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
                 ctx.fillStyle = 'black';
                 ctx.fill();
-                bullet.x += Math.cos(bullet.angle * Math.PI / 180) * bullet.speed;
-                bullet.y += Math.sin(bullet.angle * Math.PI / 180) * bullet.speed;
             });
         }
 
-        // Пример простого управления игроком
         document.addEventListener('keydown', (event) => {
+            if (!playerTank) return;
+
             if (event.key === 'ArrowUp') {
-                // Перемещение игрока вверх
-                tanks[0].y -= 5;
+                playerTank.x += Math.cos(playerTank.angle * Math.PI / 180) * 5;
+                playerTank.y += Math.sin(playerTank.angle * Math.PI / 180) * 5;
             } else if (event.key === 'ArrowDown') {
-                // Перемещение игрока вниз
-                tanks[0].y += 5;
+                playerTank.x -= Math.cos(playerTank.angle * Math.PI / 180) * 5;
+                playerTank.y -= Math.sin(playerTank.angle * Math.PI / 180) * 5;
             } else if (event.key === 'ArrowLeft') {
-                // Поворот влево
-                tanks[0].angle -= 5;
+                playerTank.angle -= 5;
             } else if (event.key === 'ArrowRight') {
-                // Поворот вправо
-                tanks[0].angle += 5;
+                playerTank.angle += 5;
             }
 
-            // Отправка данных на сервер
             ws.send(JSON.stringify({
                 type: 'move',
-                id: tanks[0].id,
-                x: tanks[0].x,
-                y: tanks[0].y,
-                angle: tanks[0].angle
+                id: playerTank.id,
+                x: playerTank.x,
+                y: playerTank.y,
+                angle: playerTank.angle
             }));
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === ' ') {
+                if (playerTank) {
+                    ws.send(JSON.stringify({
+                        type: 'shoot',
+                        id: playerTank.id
+                    }));
+                }
+            }
         });
 
         setInterval(() => {
             drawGame();
         }, 50);
+
+        ws.onopen = () => {
+            playerTank = {
+                id: `player-${Date.now()}`,
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                angle: 0,
+                isBot: false,
+            };
+
+            ws.send(JSON.stringify({
+                type: 'move',
+                id: playerTank.id,
+                x: playerTank.x,
+                y: playerTank.y,
+                angle: playerTank.angle
+            }));
+        };
     </script>
 </body>
 </html>
